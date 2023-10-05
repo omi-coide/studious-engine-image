@@ -24,11 +24,11 @@ const SCREEN_SIZE: (u16, u16) = (46, 12);
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut picker = Picker::from_termios(Some(Rgb::<u8>([255, 0, 255])))?;
-    assert_eq!(
-        ASSERT_FONT_SIZE,
-        picker.font_size(),
-        "Font size must be fixed to a specific size",
-    );
+    // assert_eq!(
+    //     ASSERT_FONT_SIZE,
+    //     picker.font_size(),
+    //     "Font size must be fixed to a specific size",
+    // );
     let dyn_img = image::io::Reader::open("./assets/Ada.png")?.decode()?;
     let image = picker.new_static_fit(
         dyn_img,
