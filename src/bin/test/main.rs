@@ -15,7 +15,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout},
     text::Line,
     widgets::{Block, Borders, Paragraph, Wrap, Widget, StatefulWidget},
-    Frame, Terminal, style::Style,
+    Frame, Terminal, style::Style, prelude::Rect,
 };
 use ratatui_image::{
     picker::Picker,
@@ -59,7 +59,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut terminal = Terminal::new(backend)?;
 
     let mut last_tick = Instant::now();
-    let tick_rate = Duration::from_millis(16);
+    let tick_rate = Duration::from_millis(50);
     loop {
         terminal.draw(|f| ui(f, &mut app))?;
 
@@ -67,7 +67,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .checked_sub(last_tick.elapsed())
             .unwrap_or_else(|| Duration::from_secs(0));
         let mut prog: f32 = 1.0 / (terminal.size().unwrap().width as f32 * terminal.size().unwrap().height as f32) as f32;
-        prog *= rand::random::<f32>() +1.0;
+        // prog *= rand::random::<f32>() +1.0;
         app.progress.progress = (app.progress.progress + prog).clamp(0.0, 1.0);
         if crossterm::event::poll(timeout)? {
             if let Event::Key(key) = event::read()? {
@@ -121,6 +121,12 @@ fn ui(f: &mut Frame<CrosstermBackend<Stdout>>, app: &mut App) {
         Line::styled("聽呢點扒像就早造。黑雞跟這主院科工又叫登昌彩喜兌抄急意肖？木四這，蛋", style),
         Line::styled("長老尼常天念珠背穿間動叫掃在友：他四者以快成麻「示活誰才貫真細樹黃個", style),
         Line::styled("在做尾點相央。屋口拉干旁泉具苦什往長過封條畫向勿民以屋；立貫亮從木山", style),
+        Line::styled("在做尾點相央。屋口拉干旁泉具苦什往長過封條畫向勿民以屋；立貫亮從木山", style),
+        Line::styled("在做尾點相央。屋口拉干旁泉具苦什往長過封條畫向勿民以屋；立貫亮從木山", style),
+        Line::styled("在做尾點相央。屋口拉干旁泉具苦什往長過封條畫向勿民以屋；立貫亮從木山", style),
+        Line::styled("在做尾點相央。屋口拉干旁泉具苦什往長過封條畫向勿民以屋；立貫亮從木山", style),
+        Line::styled("在做尾點相央。屋口拉干旁泉具苦什往長過封條畫向勿民以屋；立貫亮從木山", style),
+        Line::styled("在做尾點相央。屋口拉干旁泉具苦什往長過封條畫向勿民以屋；立貫亮從木山", style),
         Line::styled("媽貝息長好京還三心聽辛。", style)
     ];
     f.render_widget(
@@ -144,12 +150,12 @@ impl StatefulWidget for Mask {
 
     fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer, state: &mut Self::State) {
         // area should always be full frame
-        let start = f32::floor(state.progress * area.width as f32 * area.height as f32) as usize;
+        // let start = f32::floor(state.progress * area.width as f32 * area.height as f32) as usize;
         let mut start_x = 0;
         let mut start_y = 0;
         let width = area.width;
         let height = area.height;
-        while (start_y*width + start_x) as usize <= start {
+        while ((start_y*width + start_x) as f32/ (area.area()) as f32) < state.progress {
             if start_x + 1 >= width {
                 start_x = 0;
                 start_y += 1;
@@ -160,22 +166,24 @@ impl StatefulWidget for Mask {
                 break;
             }
         }
-        // try_skip
+        // try_skip, must do before resetting cells
         for i in start_x..width {
-            if buf.get(i, start_y).symbol.eq(" "){
-                state.progress += 1.0 / (area.width as f32 * area.height as f32) as f32;
+            if buf.get(i+area.x, start_y+area.y).symbol.eq(" "){
+                let mut diff = 1.0 / (area.width as f32 * area.height as f32) as f32;
+                diff *= 0.5;
+                state.progress += diff;
             }
         }
         let len = buf.content.len();
         for index in 0..len {
             let should_clear:bool;
             let (x,y) = buf.pos_of(index);
-            should_clear = !is_in(x,y,start_x,start_y);
+            should_clear = (!is_in(x,y,start_x,start_y)) && area.intersects(Rect::new(x+area.x,y+area.y,1,1));
             if should_clear {
-                if buf.get(x, y).symbol.eq(" "){
+                if buf.get(x+area.x, y+area.y).symbol.eq(" "){
                     continue;
                 } else {
-                    buf.get_mut(x, y).set_char('*');
+                    buf.get_mut(x+area.x, y+area.y).reset();
                 }  
             }
         }
