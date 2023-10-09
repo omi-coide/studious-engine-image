@@ -14,8 +14,8 @@ use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
     text::Line,
-    widgets::{Block, Borders, Paragraph, Wrap},
-    Frame, Terminal,
+    widgets::{Block, Borders, Paragraph, Wrap, Widget, StatefulWidget},
+    Frame, Terminal, style::Style,
 };
 use ratatui_image::{
     picker::Picker,
@@ -28,13 +28,14 @@ struct App {
     pub picker: Picker,
     pub image_source: ImageSource,
     pub image_state: Box<dyn ResizeProtocol>,
+    pub mask: Mask,
+    pub progress: MaskState,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // let filename = env::args()
-    //     .nth(1)
-    //     .expect("Usage: <program> [path/to/image]");
-    let filename = "/tmp/SCP.png".to_string();
+    let filename = env::args()
+        .nth(1)
+        .expect("Usage: <program> [path/to/image]");
     let image = image::io::Reader::open(&filename)?.decode()?;
 
     let mut picker = Picker::from_termios(Some(Rgb::<u8>([255, 0, 255])))?;
@@ -47,6 +48,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         picker,
         image_source,
         image_state,
+        mask: Mask {  },
+        progress: MaskState { progress: 0.0 },
     };
 
     enable_raw_mode()?;
@@ -56,13 +59,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut terminal = Terminal::new(backend)?;
 
     let mut last_tick = Instant::now();
-    let tick_rate = Duration::from_millis(1000);
+    let tick_rate = Duration::from_millis(16);
     loop {
         terminal.draw(|f| ui(f, &mut app))?;
 
         let timeout = tick_rate
             .checked_sub(last_tick.elapsed())
             .unwrap_or_else(|| Duration::from_secs(0));
+        let mut prog: f32 = 1.0 / (terminal.size().unwrap().width as f32 * terminal.size().unwrap().height as f32) as f32;
+        prog *= rand::random::<f32>() +1.0;
+        app.progress.progress = (app.progress.progress + prog).clamp(0.0, 1.0);
         if crossterm::event::poll(timeout)? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
@@ -77,6 +83,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             _ => {}
                         },
                         KeyCode::Esc => break,
+                        KeyCode::Enter => (),
                         _ => {}
                     }
                 }
@@ -121,8 +128,66 @@ fn ui(f: &mut Frame<CrosstermBackend<Stdout>>, app: &mut App) {
         chunks[0],
     );
 
-    let block_bottom = Block::default().borders(Borders::ALL).title("image");
+    let block_bottom = Block::default().borders(Borders::ALL).title(format!("{}",app.progress.progress));
     let image = ResizeImage::new(None).resize(Resize::Fit);
+    let mask = Mask{};
     f.render_stateful_widget(image, block_bottom.inner(chunks[1]), &mut app.image_state);
     f.render_widget(block_bottom, chunks[1]);
+    f.render_stateful_widget(mask, f.size(), &mut app.progress);
+}
+struct Mask {}
+struct MaskState {
+    pub progress:f32,
+}
+impl StatefulWidget for Mask {
+    type State = MaskState;
+
+    fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer, state: &mut Self::State) {
+        // area should always be full frame
+        let start = f32::floor(state.progress * area.width as f32 * area.height as f32) as usize;
+        let mut start_x = 0;
+        let mut start_y = 0;
+        let width = area.width;
+        let height = area.height;
+        while (start_y*width + start_x) as usize <= start {
+            if start_x + 1 >= width {
+                start_x = 0;
+                start_y += 1;
+            } else {
+                start_x += 1;
+            }
+            if start_y +1 == height && start_x + 1 >= width {
+                break;
+            }
+        }
+        // try_skip
+        for i in start_x..width {
+            if buf.get(i, start_y).symbol.eq(" "){
+                state.progress += 1.0 / (area.width as f32 * area.height as f32) as f32;
+            }
+        }
+        let len = buf.content.len();
+        for index in 0..len {
+            let should_clear:bool;
+            let (x,y) = buf.pos_of(index);
+            should_clear = !is_in(x,y,start_x,start_y);
+            if should_clear {
+                if buf.get(x, y).symbol.eq(" "){
+                    continue;
+                } else {
+                    buf.get_mut(x, y).set_char('*');
+                }  
+            }
+        }
+        fn is_in(x:u16,y:u16,x_:u16,y_:u16)-> bool {
+            // if this is true, should NOT clear;
+            if y < y_ {
+                return true;
+            } else if y==y_{
+                return x<=x_;
+            } else {
+                return false;
+            }
+        }
+    }
 }
