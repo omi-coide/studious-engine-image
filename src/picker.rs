@@ -72,8 +72,10 @@ impl Picker {
     #[cfg(feature = "rustix")]
     pub fn from_termios(background_color: Option<Rgb<u8>>) -> Result<Picker> {
         let stdout = rustix::stdio::stdout();
-        let font_size = font_size(rustix::termios::tcgetwinsize(stdout)?)?;
-        Picker::new(font_size, guess_protocol(), background_color)
+        let font_size: (u16, u16) = font_size(rustix::termios::tcgetwinsize(stdout)?)?;
+        // YLY MODIFIED: 
+        // calling check_device_attrs() may block on read(); let's assert sixel support now
+        Picker::new(font_size, ProtocolType::Sixel, background_color)
     }
 
     /// Create a picker from a given terminal [FontSize] and [ProtocolType].
@@ -240,7 +242,7 @@ fn check_device_attrs() -> Result<ProtocolType> {
 
     let mut buf = String::new();
     loop {
-        let mut charbuf = [0; 1];
+        let mut charbuf: [u8; 1] = [0; 1];
         rustix::io::read(stdin, &mut charbuf)?;
         if charbuf[0] == 0 {
             continue;

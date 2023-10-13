@@ -35,7 +35,8 @@ struct App {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let filename = env::args()
         .nth(1)
-        .expect("Usage: <program> [path/to/image]");
+        .unwrap_or("/home/yly/out.png".to_string());
+
     let image = image::io::Reader::open(&filename)?.decode()?;
 
     let mut picker = Picker::from_termios(Some(Rgb::<u8>([255, 0, 255])))?;
@@ -139,7 +140,11 @@ fn ui(f: &mut Frame<CrosstermBackend<Stdout>>, app: &mut App) {
     let mask = Mask{};
     f.render_stateful_widget(image, block_bottom.inner(chunks[1]), &mut app.image_state);
     f.render_widget(block_bottom, chunks[1]);
-    f.render_stateful_widget(mask, f.size(), &mut app.progress);
+    let layout = Layout::default()
+    .direction(Direction::Horizontal)
+    .constraints(vec![Constraint::Length(4),Constraint::Min(2)])
+    .split(f.size());
+    f.render_stateful_widget(mask,layout[1] , &mut app.progress);
 }
 struct Mask {}
 struct MaskState {
@@ -184,6 +189,7 @@ impl StatefulWidget for Mask {
                     continue;
                 } else {
                     buf.get_mut(x+area.x, y+area.y).reset();
+                    buf.get_mut(x+area.x, y+area.y).set_skip(false);
                 }  
             }
         }
