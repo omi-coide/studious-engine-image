@@ -19,38 +19,22 @@ use ratatui::{
 };
 use ratatui_image::{
     picker::Picker,
-    protocol::{ImageSource, ResizeProtocol},
-    Resize, ResizeImage,
+    protocol::{ImageSource, ResizeProtocol, iterm, Protocol},
+    Resize, ResizeImage, FixedImage,
 };
 
 struct App {
-    pub filename: String,
-    pub picker: Picker,
-    pub image_source: ImageSource,
-    pub image_state: Box<dyn ResizeProtocol>,
-    pub mask: Mask,
-    pub progress: MaskState,
+    image: Im,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let filename = env::args()
         .nth(1)
-        .unwrap_or("/home/yly/out.png".to_string());
+        .unwrap_or("out.png".to_string());
 
-    let image = image::io::Reader::open(&filename)?.decode()?;
-
-    let mut picker = Picker::from_termios(Some(Rgb::<u8>([255, 0, 255])))?;
-
-    let image_source = ImageSource::new(image.clone(), picker.font_size());
-    let image_state = picker.new_state(image);
-
+    let file_bytes: Vec<u8> = std::fs::read(filename.clone()).expect("Failed to read the file");
     let mut app = App {
-        filename,
-        picker,
-        image_source,
-        image_state,
-        mask: Mask {  },
-        progress: MaskState { progress: 0.0 },
+        image: Im{ width: 10, height: 10 , img_bytes: file_bytes },
     };
 
     enable_raw_mode()?;
@@ -60,27 +44,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut terminal = Terminal::new(backend)?;
 
     let mut last_tick = Instant::now();
-    let tick_rate = Duration::from_millis(50);
+    let tick_rate = Duration::from_millis(500);
     loop {
         terminal.draw(|f| ui(f, &mut app))?;
 
         let timeout = tick_rate
             .checked_sub(last_tick.elapsed())
             .unwrap_or_else(|| Duration::from_secs(0));
-        let mut prog: f32 = 1.0 / (terminal.size().unwrap().width as f32 * terminal.size().unwrap().height as f32) as f32;
+        // let mut prog: f32 = 1.0 / (terminal.size().unwrap().width as f32 * terminal.size().unwrap().height as f32) as f32;
         // prog *= rand::random::<f32>() +1.0;
-        app.progress.progress = (app.progress.progress + prog).clamp(0.0, 1.0);
+        // app.progress.progress = (app.progress.progress + prog).clamp(0.0, 1.0);
         if crossterm::event::poll(timeout)? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
                     match key.code {
                         KeyCode::Char(c) => match c {
                             'q' => break,
-                            ' ' => {
-                                app.picker.cycle_protocols();
-                                app.image_state =
-                                    app.picker.new_state(app.image_source.image.clone());
-                            }
                             _ => {}
                         },
                         KeyCode::Esc => break,
@@ -105,13 +84,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn ui(f: &mut Frame<CrosstermBackend<Stdout>>, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(25), Constraint::Min(1)].as_ref())
+        .constraints([Constraint::Min(10), Constraint::Min(1)].as_ref())
         .split(f.size());
 
     // let block_top = Block::default()
     //     .borders(Borders::ALL)
     //     .title("ratatui-image");
-    let dyn_img = &app.image_source.image;
     let style = ratatui::style::Style::default().fg(ratatui::style::Color::Green);
     let lines = vec![
         Line::styled("丟您圓「停冬像個眼燈馬夕」而燈星；奶內信次許蛋婆法！法冬就爸母品嗎羽", style),
@@ -134,18 +112,31 @@ fn ui(f: &mut Frame<CrosstermBackend<Stdout>>, app: &mut App) {
         Paragraph::new(lines).wrap(Wrap { trim: true }),
         chunks[0],
     );
-
-    let block_bottom = Block::default().borders(Borders::ALL).title(format!("{}",app.progress.progress));
-    let image = ResizeImage::new(None).resize(Resize::Fit);
-    let mask = Mask{};
-    f.render_stateful_widget(image, block_bottom.inner(chunks[1]), &mut app.image_state);
-    f.render_widget(block_bottom, chunks[1]);
-    let layout = Layout::default()
-    .direction(Direction::Horizontal)
-    .constraints(vec![Constraint::Length(4),Constraint::Min(2)])
-    .split(f.size());
-    f.render_stateful_widget(mask,layout[1] , &mut app.progress);
+    f.render_widget(app.image.clone(), chunks[1]);
+    
 }
+#[derive(Clone)]
+pub struct Im{
+    pub width: u16,
+    pub height: u16,
+    pub img_bytes: Vec<u8>
+}
+impl Widget for Im {
+    fn render(self, area: Rect, buf: &mut ratatui::prelude::Buffer) {
+        let data = iterm2img::from_bytes(self.img_bytes).width(self.width.into()).height(self.height.into()).inline(true).build();
+        buf.get_mut(area.left(), area.top())
+            .set_symbol(&data);
+
+        // Skip entire area
+        for y in area.top()..area.bottom() {
+            for x in area.left()..area.right() {
+                buf.get_mut(x, y).set_skip(true);
+            }
+        }
+        buf.get_mut(area.left(), area.top()).set_skip(false);
+    }
+}
+
 struct Mask {}
 struct MaskState {
     pub progress:f32,

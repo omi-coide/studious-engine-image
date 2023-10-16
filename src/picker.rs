@@ -16,7 +16,7 @@ use crate::{
     protocol::{
         halfblocks::{FixedHalfblocks, HalfblocksState},
         kitty::{FixedKitty, KittyState},
-        Protocol, ResizeProtocol,
+        Protocol, ResizeProtocol, iterm::{FixedIterm, ItermState},
     },
     FontSize, ImageSource, Resize, Result,
 };
@@ -41,18 +41,21 @@ pub enum ProtocolType {
     #[cfg(feature = "sixel")]
     Sixel,
     Kitty,
+    Iterm,
 }
 
 impl ProtocolType {
     pub fn next(&self) -> ProtocolType {
         match self {
             #[cfg(not(feature = "sixel"))]
-            ProtocolType::Halfblocks => ProtocolType::Kitty,
+            ProtocolType::Halfblocks => ProtocolType::Iterm,
             #[cfg(feature = "sixel")]
             ProtocolType::Halfblocks => ProtocolType::Sixel,
             #[cfg(feature = "sixel")]
             ProtocolType::Sixel => ProtocolType::Kitty,
-            ProtocolType::Kitty => ProtocolType::Halfblocks,
+            ProtocolType::Kitty => ProtocolType::Iterm,
+            ProtocolType::Iterm => ProtocolType::Halfblocks,
+            
         }
     }
 }
@@ -147,6 +150,12 @@ impl Picker {
                     self.kitty_counter,
                 )?))
             }
+            ProtocolType::Iterm => Ok(Box::new(FixedIterm::from_source(
+                &source,
+                resize,
+                self.background_color,
+                size,
+            )?)),
         }
     }
 
@@ -161,6 +170,7 @@ impl Picker {
                 self.kitty_counter += 1;
                 Box::new(KittyState::new(source, self.kitty_counter))
             }
+            ProtocolType::Iterm => Box::new(ItermState::new(source)),
         }
     }
 

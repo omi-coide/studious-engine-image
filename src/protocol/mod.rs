@@ -15,6 +15,7 @@ use super::Resize;
 
 pub mod halfblocks;
 pub mod kitty;
+pub mod iterm;
 #[cfg(feature = "sixel")]
 pub mod sixel;
 
